@@ -1,373 +1,241 @@
+from typing import Dict
+from telegram import Update, error, ReplyKeyboardMarkup
+from telegram.ext import Updater, CallbackContext, MessageHandler, Filters, CommandHandler, ConversationHandler
+from decouple import config
+from renderer import cc_renderer
 import logging
-from typing import Tuple, Dict, Any
-
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    MessageHandler,
-    Filters,
-    ConversationHandler,
-    CallbackQueryHandler,
-    CallbackContext,
-)
-
-# Enable logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
 
 logger = logging.getLogger(__name__)
 
-# State definitions for top level conversation
-SELECTING_ACTION, ADDING_MEMBER, ADDING_SELF, DESCRIBING_SELF = map(chr, range(4))
-# State definitions for second level conversation
-SELECTING_LEVEL, SELECTING_GENDER = map(chr, range(4, 6))
-# State definitions for descriptions conversation
-SELECTING_FEATURE, TYPING = map(chr, range(6, 8))
-# Meta states
-STOPPING, SHOWING = map(chr, range(8, 10))
-# Shortcut for ConversationHandler.END
-END = ConversationHandler.END
+updater = Updater(token=config('BOT_TOKEN'))
 
-# Different constants for this example
-(
-    PARENTS,
-    CHILDREN,
-    SELF,
-    GENDER,
-    MALE,
-    FEMALE,
-    AGE,
-    NAME,
-    START_OVER,
-    FEATURES,
-    CURRENT_FEATURE,
-    CURRENT_LEVEL,
-) = map(chr, range(10, 22))
+CHOOSING, TYPING_REPLY, TYPING_CHOICE = range(3)
+
+reply_keyboard = [
+    ['وارد کردن اسم', 'وارد کردن شماره کارت'],
+    ['ساخت پک استیکر'],
+]
+markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
 
-# Helper
-def _name_switcher(level: str) -> Tuple[str, str]:
-    if level == PARENTS:
-        return 'Father', 'Mother'
-    return 'Brother', 'Sister'
+def start(update: Update, context: CallbackContext):
+    Welcome_message = f"""سلام {update.message.chat.first_name}
+خیلی خوش اومدی!
+برای ساخت استیکر شماره کارتت دستور /create رو بزن😁
+"""
+
+    first_name = update.message.chat.first_name if update.message.chat.first_name is not None else ''
+    last_name = update.message.chat.last_name if update.message.chat.last_name is not None else ''
+    username = update.message.chat.username
+    context.bot.send_message(chat_id=update.effective_chat.id, text=Welcome_message)
+
+    # log starts in channel
+    context.bot.send_message(chat_id=config('CHANNEL_ID'),
+                             text=f'{first_name} {last_name} with username @{username} started bot.',
+                             disable_notification=True)
+    # log starts in logger
+    logger.info(f'{first_name} {last_name} with username {username} started bot')
 
 
-# Top level conversation callbacks
-def start(update: Update, context: CallbackContext) -> str:
-    """Select an action: Adding parent/child or show data."""
-    text = (
-        "You may choose to add a family member, yourself, show the gathered data, or end the "
-        "conversation. To abort, simply type /stop."
+def prettify_data(user_data: Dict[str, str]) -> str:
+    """Helper function for formatting the gathered user info."""
+    if len(user_data['cards']) == 0:
+        text = "شماره کارتی وارد نشده!"
+    else:
+        text = f"شماره کارت ها: {', '.join(user_data['cards'])}"
+
+    if user_data['name'] is not None:
+        text += f"\nنام: {user_data['name']}"
+    else:
+        text += "\nنام وارد نشده!"
+
+    return text
+
+
+def create(update: Update, context: CallbackContext) -> int:
+    """Start the conversation and ask user for input."""
+    update.message.reply_text(
+        "برای ساخت پک استیکر شماره کارتت، اطلاعاتت رو وارد کن🤑",
+        reply_markup=markup,
+    )
+    context.user_data['cards'] = []
+    context.user_data['name'] = None
+
+    sticker_set_unique_name = update.effective_user.id
+    try:
+        sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text=f'قبلا تو این ربات استیکر ساختی. اگر میخوای دوباره بسازی ادامه بده وگرنه استیکرت رو میتونی ببینی😁')
+        context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=sticker_set.stickers[0])
+    except error.TelegramError:
+        pass
+
+    return CHOOSING
+
+
+def regular_choice(update: Update, context: CallbackContext) -> int:
+    """Ask the user for info about the selected predefined choice."""
+    text = update.message.text
+    context.user_data['choice'] = text
+    if text == 'وارد کردن اسم':
+        update.message.reply_text("اسمت رو بنویس:")
+    elif text == 'وارد کردن شماره کارت':
+        update.message.reply_text(f'شماره کارتت رو وارد کن:')
+
+    return TYPING_REPLY
+
+
+def received_information(update: Update, context: CallbackContext) -> int:
+    """Store info provided by user and ask for the next item."""
+    text = update.message.text.replace('-', '')
+    command = context.user_data['choice']
+    if command == 'وارد کردن اسم':
+        context.user_data['name'] = text
+    elif command == 'وارد کردن شماره کارت':
+        if len(text) != 16:
+            update.message.reply_text("شماره کارت باید 16 رقم باشه! دوباره شماره کارتت رو وارد کن:")
+            return TYPING_REPLY
+        context.user_data['cards'].append(text)
+
+    del context.user_data['choice']
+
+    update.message.reply_text(
+        f"""تا الان این اطلاعات رو به من دادی:
+{prettify_data(context.user_data)}
+میتونی بازم شماره کارت وارد کنی یا روی ساخت پک استیکر بزنی تا برات استیکرت رو بسازم😎
+""",
+        reply_markup=markup,
     )
 
-    buttons = [
-        [
-            InlineKeyboardButton(text='Add family member', callback_data=str(ADDING_MEMBER)),
-            InlineKeyboardButton(text='Add yourself', callback_data=str(ADDING_SELF)),
-        ],
-        [
-            InlineKeyboardButton(text='Show data', callback_data=str(SHOWING)),
-            InlineKeyboardButton(text='Done', callback_data=str(END)),
-        ],
-    ]
-    keyboard = InlineKeyboardMarkup(buttons)
-
-    # If we're starting over we don't need to send a new message
-    if context.user_data.get(START_OVER):
-        update.callback_query.answer()
-        update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-    else:
-        update.message.reply_text(
-            "Hi, I'm Family Bot and I'm here to help you gather information about your family."
-        )
-        update.message.reply_text(text=text, reply_markup=keyboard)
-
-    context.user_data[START_OVER] = False
-    return SELECTING_ACTION
+    return CHOOSING
 
 
-def adding_self(update: Update, context: CallbackContext) -> str:
-    """Add information about yourself."""
-    context.user_data[CURRENT_LEVEL] = SELF
-    text = 'Okay, please tell me about yourself.'
-    button = InlineKeyboardButton(text='Add info', callback_data=str(MALE))
-    keyboard = InlineKeyboardMarkup.from_button(button)
-
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-
-    return DESCRIBING_SELF
-
-
-def show_data(update: Update, context: CallbackContext) -> str:
-    """Pretty print gathered data."""
-
-    def prettyprint(user_data: Dict[str, Any], level: str) -> str:
-        people = user_data.get(level)
-        if not people:
-            return '\nNo information yet.'
-
-        text = ''
-        if level == SELF:
-            for person in user_data[level]:
-                text += f"\nName: {person.get(NAME, '-')}, Age: {person.get(AGE, '-')}"
-        else:
-            male, female = _name_switcher(level)
-
-            for person in user_data[level]:
-                gender = female if person[GENDER] == FEMALE else male
-                text += f"\n{gender}: Name: {person.get(NAME, '-')}, Age: {person.get(AGE, '-')}"
-        return text
-
+def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
+    """Create sticker set from gathered data."""
     user_data = context.user_data
-    text = f"Yourself:{prettyprint(user_data, SELF)}"
-    text += f"\n\nParents:{prettyprint(user_data, PARENTS)}"
-    text += f"\n\nChildren:{prettyprint(user_data, CHILDREN)}"
+    if 'choice' in user_data:
+        del user_data['choice']
 
-    buttons = [[InlineKeyboardButton(text='Back', callback_data=str(END))]]
-    keyboard = InlineKeyboardMarkup(buttons)
+    name = context.user_data['name']
+    cards = context.user_data['cards']
 
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-    user_data[START_OVER] = True
+    first_name = update.message.chat.first_name if update.message.chat.first_name is not None else ''
+    last_name = update.message.chat.last_name if update.message.chat.last_name is not None else ''
+    username = update.message.chat.username
+    telegram_id = update.effective_user.id
 
-    return SHOWING
+    if len(cards) == 0:
+        context.bot.send_message(chat_id=update.effective_chat.id, text="شماره کارتی برای ساخت استیکر وارد نکردی😔")
+        return ConversationHandler.END
+    if name is None:
+        context.bot.send_message(chat_id=update.effective_chat.id, text="اسم برای ساخت استیکر وارد نکردی😔")
+        return ConversationHandler.END
 
+    sticker_set_unique_name = update.effective_user.id
+    context.bot.send_message(chat_id=update.effective_chat.id, text="در حال ساخت پک استیکر...")
 
-def stop(update: Update, context: CallbackContext) -> int:
-    """End Conversation by command."""
-    update.message.reply_text('Okay, bye.')
+    try:
+        sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
+    except error.TelegramError:
+        sticker_set = None
 
-    return END
-
-
-def end(update: Update, context: CallbackContext) -> int:
-    """End conversation from InlineKeyboardButton."""
-    update.callback_query.answer()
-
-    text = 'See you around!'
-    update.callback_query.edit_message_text(text=text)
-
-    return END
-
-
-# Second level conversation callbacks
-def select_level(update: Update, context: CallbackContext) -> str:
-    """Choose to add a parent or a child."""
-    text = 'You may add a parent or a child. Also you can show the gathered data or go back.'
-    buttons = [
-        [
-            InlineKeyboardButton(text='Add parent', callback_data=str(PARENTS)),
-            InlineKeyboardButton(text='Add child', callback_data=str(CHILDREN)),
-        ],
-        [
-            InlineKeyboardButton(text='Show data', callback_data=str(SHOWING)),
-            InlineKeyboardButton(text='Back', callback_data=str(END)),
-        ],
-    ]
-    keyboard = InlineKeyboardMarkup(buttons)
-
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-
-    return SELECTING_LEVEL
-
-
-def select_gender(update: Update, context: CallbackContext) -> str:
-    """Choose to add mother or father."""
-    level = update.callback_query.data
-    context.user_data[CURRENT_LEVEL] = level
-
-    text = 'Please choose, whom to add.'
-
-    male, female = _name_switcher(level)
-
-    buttons = [
-        [
-            InlineKeyboardButton(text=f'Add {male}', callback_data=str(MALE)),
-            InlineKeyboardButton(text=f'Add {female}', callback_data=str(FEMALE)),
-        ],
-        [
-            InlineKeyboardButton(text='Show data', callback_data=str(SHOWING)),
-            InlineKeyboardButton(text='Back', callback_data=str(END)),
-        ],
-    ]
-    keyboard = InlineKeyboardMarkup(buttons)
-
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-
-    return SELECTING_GENDER
-
-
-def end_second_level(update: Update, context: CallbackContext) -> int:
-    """Return to top level conversation."""
-    context.user_data[START_OVER] = True
-    start(update, context)
-
-    return END
-
-
-# Third level callbacks
-def select_feature(update: Update, context: CallbackContext) -> str:
-    """Select a feature to update for the person."""
-    buttons = [
-        [
-            InlineKeyboardButton(text='Name', callback_data=str(NAME)),
-            InlineKeyboardButton(text='Age', callback_data=str(AGE)),
-            InlineKeyboardButton(text='Done', callback_data=str(END)),
-        ]
-    ]
-    keyboard = InlineKeyboardMarkup(buttons)
-
-    # If we collect features for a new person, clear the cache and save the gender
-    if not context.user_data.get(START_OVER):
-        context.user_data[FEATURES] = {GENDER: update.callback_query.data}
-        text = 'Please select a feature to update.'
-
-        update.callback_query.answer()
-        update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
-    # But after we do that, we need to send a new message
+    if sticker_set is not None:
+        # delete stickers in pack and create new one
+        for sticker in sticker_set.stickers:
+            context.bot.delete_sticker_from_set(sticker=sticker.file_id)
+        start_index = 0
     else:
-        text = 'Got it! Please select a feature to update.'
-        update.message.reply_text(text=text, reply_markup=keyboard)
+        # create sticker set and add sticker to it from png file
+        image = cc_renderer(name, cards[0])
+        context.bot.create_new_sticker_set(user_id=update.effective_chat.id,
+                                           name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
+                                           title='credit card sticker set',
+                                           png_sticker=image.getvalue(),
+                                           emojis='💳')
+        image.close()
+        start_index = 1
 
-    context.user_data[START_OVER] = False
-    return SELECTING_FEATURE
+    for card in cards[start_index:]:
+        image = cc_renderer(name, card)
+        context.bot.add_sticker_to_set(user_id=update.effective_chat.id,
+                                       name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
+                                       png_sticker=image.getvalue(),
+                                       emojis='💳')
+        image.close()
 
+    # add ad sticker to set
+    context.bot.add_sticker_to_set(user_id=update.effective_chat.id,
+                                   name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
+                                   png_sticker=config('AD_STICKER_FILE_ID'),
+                                   emojis='💳')
 
-def ask_for_input(update: Update, context: CallbackContext) -> str:
-    """Prompt user to input data for selected feature."""
-    context.user_data[CURRENT_FEATURE] = update.callback_query.data
-    text = 'Okay, tell me.'
+    # send created sticker set to user
+    sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
+    context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=sticker_set.stickers[0])
 
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(text=text)
+    logger.info(f'{first_name} {last_name} with username {username} and id {telegram_id} created sticker set')
 
-    return TYPING
-
-
-def save_input(update: Update, context: CallbackContext) -> str:
-    """Save input for feature and return to feature selection."""
-    user_data = context.user_data
-    user_data[FEATURES][user_data[CURRENT_FEATURE]] = update.message.text
-
-    user_data[START_OVER] = True
-
-    return select_feature(update, context)
-
-
-def end_describing(update: Update, context: CallbackContext) -> int:
-    """End gathering of features and return to parent conversation."""
-    user_data = context.user_data
-    level = user_data[CURRENT_LEVEL]
-    if not user_data.get(level):
-        user_data[level] = []
-    user_data[level].append(user_data[FEATURES])
-
-    # Print upper level menu
-    if level == SELF:
-        user_data[START_OVER] = True
-        start(update, context)
-    else:
-        select_level(update, context)
-
-    return END
+    user_data.clear()
+    return ConversationHandler.END
 
 
-def stop_nested(update: Update, context: CallbackContext) -> str:
-    """Completely end conversation from within nested conversation."""
-    update.message.reply_text('Okay, bye.')
+def about(update: Update, context: CallbackContext):
+    about_message = f"""
+خوشحال میشم اگر در راستای بهتر شدنم پیشنهادات رو به @SadjadEb بگی.
+همچنین اگر بانکی تشخیص داده نمیشه هم میتونی اطلاع رسانی کنی تا اضافه بشه.
+"""
+    context.bot.send_message(chat_id=update.effective_chat.id, text=about_message)
 
-    return STOPPING
+
+def raw_text(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text="منظورت رو نفهیدم🙁")
 
 
-def main() -> None:
-    """Run the bot."""
-    # Create the Updater and pass it your bot's token.
-    updater = Updater("TOKEN")
+def sent_sticker(update: Update, context: CallbackContext):
+    print(update.message.sticker.file_id)
+    context.bot.send_message(chat_id=update.effective_chat.id, text="من خودم ذغال فروشم به من ذغال نده😁")
 
-    # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
 
-    # Set up third level ConversationHandler (collecting features)
-    description_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(
-                select_feature, pattern='^' + str(MALE) + '$|^' + str(FEMALE) + '$'
+def unknown(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.effective_chat.id, text="ببخشید من این دستوری که زدی رو نمیفهمم🥲")
+
+
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler('create', create)],
+    states={
+        CHOOSING: [
+            MessageHandler(
+                Filters.regex('^(وارد کردن اسم|وارد کردن شماره کارت)$'), regular_choice
             )
         ],
-        states={
-            SELECTING_FEATURE: [
-                CallbackQueryHandler(ask_for_input, pattern='^(?!' + str(END) + ').*$')
-            ],
-            TYPING: [MessageHandler(Filters.text & ~Filters.command, save_input)],
-        },
-        fallbacks=[
-            CallbackQueryHandler(end_describing, pattern='^' + str(END) + '$'),
-            CommandHandler('stop', stop_nested),
+        TYPING_CHOICE: [
+            MessageHandler(
+                Filters.text & ~(Filters.command | Filters.regex('^ساخت پک استیکر$')), regular_choice
+            )
         ],
-        map_to_parent={
-            # Return to second level menu
-            END: SELECTING_LEVEL,
-            # End conversation altogether
-            STOPPING: STOPPING,
-        },
-    )
-
-    # Set up second level ConversationHandler (adding a person)
-    add_member_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(select_level, pattern='^' + str(ADDING_MEMBER) + '$')],
-        states={
-            SELECTING_LEVEL: [
-                CallbackQueryHandler(select_gender, pattern=f'^{PARENTS}$|^{CHILDREN}$')
-            ],
-            SELECTING_GENDER: [description_conv],
-        },
-        fallbacks=[
-            CallbackQueryHandler(show_data, pattern='^' + str(SHOWING) + '$'),
-            CallbackQueryHandler(end_second_level, pattern='^' + str(END) + '$'),
-            CommandHandler('stop', stop_nested),
+        TYPING_REPLY: [
+            MessageHandler(
+                Filters.text & ~(Filters.command | Filters.regex('^ساخت پک استیکر$')),
+                received_information,
+            )
         ],
-        map_to_parent={
-            # After showing data return to top level menu
-            SHOWING: SHOWING,
-            # Return to top level menu
-            END: SELECTING_ACTION,
-            # End conversation altogether
-            STOPPING: END,
-        },
-    )
+    },
+    fallbacks=[MessageHandler(Filters.regex('^ساخت پک استیکر$'), create_cc_sticker_set)],
+)
 
-    # Set up top level ConversationHandler (selecting action)
-    # Because the states of the third level conversation map to the ones of the second level
-    # conversation, we need to make sure the top level conversation can also handle them
-    selection_handlers = [
-        add_member_conv,
-        CallbackQueryHandler(show_data, pattern='^' + str(SHOWING) + '$'),
-        CallbackQueryHandler(adding_self, pattern='^' + str(ADDING_SELF) + '$'),
-        CallbackQueryHandler(end, pattern='^' + str(END) + '$'),
-    ]
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            SHOWING: [CallbackQueryHandler(start, pattern='^' + str(END) + '$')],
-            SELECTING_ACTION: selection_handlers,
-            SELECTING_LEVEL: selection_handlers,
-            DESCRIBING_SELF: [description_conv],
-            STOPPING: [CommandHandler('start', start)],
-        },
-        fallbacks=[CommandHandler('stop', stop)],
-    )
+handler_objects = [
+    CommandHandler('start', start),
+    conv_handler,
+    CommandHandler('about', about),
+    MessageHandler(Filters.text & (~Filters.command), raw_text),
+    MessageHandler(Filters.sticker, sent_sticker),
+    MessageHandler(Filters.command, unknown),
+]
 
-    dispatcher.add_handler(conv_handler)
 
-    # Start the Bot
+def run_bot():
+    for handler in handler_objects:
+        updater.dispatcher.add_handler(handler)
     updater.start_polling()
-
-    # Run the bot until you press Ctrl-C or the process receives SIGINT,
-    # SIGTERM or SIGABRT. This should be used most of the time, since
-    # start_polling() is non-blocking and will stop the bot gracefully.
     updater.idle()
