@@ -112,9 +112,8 @@ def received_information(update: Update, context: CallbackContext) -> int:
 
 def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
     """Create sticker set from gathered data."""
-    user_data = context.user_data
-    if 'choice' in user_data:
-        del user_data['choice']
+    if 'choice' in context.user_data:
+        del context.user_data['choice']
 
     name = context.user_data['name']
     cards = context.user_data['cards']
@@ -173,9 +172,11 @@ def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
     sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
     context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=sticker_set.stickers[0])
 
+    # log sticker set creation
     logger.info(f'{first_name} {last_name} with username {username} and id {telegram_id} created sticker set')
+    context.bot.send_sticker(chat_id=config('CHANNEL_ID'), sticker=sticker_set.stickers[0])
 
-    user_data.clear()
+    context.user_data.clear()
     return ConversationHandler.END
 
 
