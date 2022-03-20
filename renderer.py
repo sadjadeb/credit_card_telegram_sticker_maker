@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
+from io import BytesIO
 from banks_data import banks
 
 
@@ -52,7 +53,7 @@ def cc_renderer(name, card_number):
     reshaped_text = get_display(arabic_reshaper.reshape(name))
     reshaped_number = get_display(arabic_reshaper.reshape(hyphenated_card_number))
 
-    # start drawing on image
+    # create drawing on image
     draw = ImageDraw.Draw(base_image)
 
     # draw logo on image
@@ -69,6 +70,7 @@ def cc_renderer(name, card_number):
     width = (base_width - draw.textsize(reshaped_text, font=text_font)[0]) / 2
     draw.text((width, 443), reshaped_text, fill="black", font=text_font)
 
-    base_image.show()
-
-    return base_image
+    # return image in png format
+    image_buffer = BytesIO()
+    base_image.save(image_buffer, 'PNG')
+    return image_buffer
