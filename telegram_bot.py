@@ -66,11 +66,14 @@ def create(update: Update, context: CallbackContext) -> int:
     sticker_set_unique_name = update.effective_user.id
     try:
         sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
+        previous_sticker = sticker_set.stickers[0]
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text=f'قبلا تو این ربات استیکر ساختی. اگر میخوای دوباره بسازی ادامه بده وگرنه استیکرت رو میتونی ببینی😁')
-        context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=sticker_set.stickers[0])
+        context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=previous_sticker)
     except error.TelegramError:
         pass
+    except IndexError:
+        logger.warning(f'user {update.effective_user.id} previous sticker had no stickers')
 
     return CHOOSING
 
