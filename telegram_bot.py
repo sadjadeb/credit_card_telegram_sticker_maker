@@ -17,6 +17,8 @@ reply_keyboard = [
 ]
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
+__to_english_nums__ = str.maketrans('۰۱۲۳۴۵۶۷۸۹', '0123456789')
+
 
 def start(update: Update, context: CallbackContext):
     Welcome_message = f"""سلام {update.message.chat.first_name}
@@ -95,7 +97,7 @@ def received_information(update: Update, context: CallbackContext) -> int:
         if len(text) != 16:
             update.message.reply_text("شماره کارت باید 16 رقم باشه! دوباره شماره کارتت رو وارد کن:")
             return TYPING_REPLY
-        context.user_data['cards'].append(text)
+        context.user_data['cards'].append(text.translate(__to_english_nums__))
 
     del context.user_data['choice']
 

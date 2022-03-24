@@ -20,7 +20,7 @@ def get_bank(card_number):
             return bank
 
 
-def cc_renderer(name, card_number):
+def cc_renderer(name: str, card_number: str):
     if len(card_number) != 16:
         raise ValueError('Card number must be 16 digits long')
 
