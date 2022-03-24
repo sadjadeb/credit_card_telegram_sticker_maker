@@ -2,6 +2,7 @@ from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
 from io import BytesIO
+from platform import system
 from banks_data import banks
 
 
@@ -52,6 +53,10 @@ def cc_renderer(name, card_number):
     # correct text shape for persian
     reshaped_text = get_display(arabic_reshaper.reshape(name))
     reshaped_number = get_display(arabic_reshaper.reshape(hyphenated_card_number))
+
+    # reverse text in linux based systems
+    if system() == 'Linux':
+        reshaped_text = reshaped_text[::-1]
 
     # create drawing on image
     draw = ImageDraw.Draw(base_image)
