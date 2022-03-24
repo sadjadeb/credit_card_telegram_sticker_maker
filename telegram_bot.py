@@ -1,5 +1,5 @@
 from typing import Dict
-from telegram import Update, error, ReplyKeyboardMarkup
+from telegram import Update, error, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Updater, CallbackContext, MessageHandler, Filters, CommandHandler, ConversationHandler
 from decouple import config
 from renderer import cc_renderer
@@ -89,15 +89,19 @@ def regular_choice(update: Update, context: CallbackContext) -> int:
 
 def received_information(update: Update, context: CallbackContext) -> int:
     """Store info provided by user and ask for the next item."""
-    text = update.message.text.replace('-', '')
     command = context.user_data['choice']
+    input_value = update.message.text
+
     if command == 'وارد کردن اسم':
-        context.user_data['name'] = text
+        context.user_data['name'] = input_value
     elif command == 'وارد کردن شماره کارت':
-        if len(text) != 16:
+        input_value = input_value.replace(' ', '').replace('-', '')
+        input_value = input_value.translate(__to_english_nums__)
+
+        if len(input_value) != 16:
             update.message.reply_text("شماره کارت باید 16 رقم باشه! دوباره شماره کارتت رو وارد کن:")
             return TYPING_REPLY
-        context.user_data['cards'].append(text.translate(__to_english_nums__))
+        context.user_data['cards'].append(input_value)
 
     del context.user_data['choice']
 
@@ -127,13 +131,13 @@ def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
 
     if len(cards) == 0:
         context.bot.send_message(chat_id=update.effective_chat.id, text="شماره کارتی برای ساخت استیکر وارد نکردی😔")
-        return ConversationHandler.END
+        return CHOOSING
     if name is None:
         context.bot.send_message(chat_id=update.effective_chat.id, text="اسم برای ساخت استیکر وارد نکردی😔")
-        return ConversationHandler.END
+        return CHOOSING
 
     sticker_set_unique_name = update.effective_user.id
-    context.bot.send_message(chat_id=update.effective_chat.id, text="در حال ساخت پک استیکر...")
+    update.message.reply_text("در حال ساخت پک استیکر...", reply_markup=ReplyKeyboardRemove())
 
     try:
         sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
@@ -176,7 +180,7 @@ def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
 
     # log sticker set creation
     logger.info(f'{first_name} {last_name} with username {username} and id {telegram_id} created sticker set')
-    context.bot.send_sticker(chat_id=config('CHANNEL_ID'), sticker=sticker_set.stickers[0])
+    context.bot.send_sticker(chat_id=config('CHANNEL_ID'), sticker=sticker_set.stickers[0], disable_notification=True)
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -192,7 +196,7 @@ def about(update: Update, context: CallbackContext):
 
 def raw_text(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=update.effective_chat.id,
-                             text="منظورت رو نفهیدم🙁")
+                             text="اول باید انتخاب کنی چه اطلاعاتی رو قراره به من بدی🙄")
 
 
 def sent_sticker(update: Update, context: CallbackContext):
