@@ -18,6 +18,7 @@ def get_bank(card_number):
     for bank in banks:
         if card_number[0:6] == str(bank['card_no']):
             return bank
+    return None
 
 
 def cc_renderer(name: str, card_number: str):
@@ -42,8 +43,8 @@ def cc_renderer(name: str, card_number: str):
         font_size = 18
 
     # load the font
-    text_font = ImageFont.truetype('fonts/BTitrBd.ttf', font_size)
-    number_font = ImageFont.truetype('fonts/BTitrBd.ttf', 30)
+    text_font = ImageFont.truetype('statics/fonts/BTitrBd.ttf', font_size)
+    number_font = ImageFont.truetype('statics/fonts/BTitrBd.ttf', 30)
 
     # create 430x512 image as base
     base_width, base_height = 430, 512
@@ -62,7 +63,7 @@ def cc_renderer(name: str, card_number: str):
     draw = ImageDraw.Draw(base_image)
 
     # draw logo on image
-    logo = Image.open(f'logos/{bank["bank_name"]}.png')
+    logo = Image.open(f'statics/logos/{bank["bank_name"]}.png')
     base_image.paste(logo, (65, 5))
 
     # draw background
