@@ -1,5 +1,5 @@
 from typing import Dict
-from telegram import Update, error, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, error, ReplyKeyboardMarkup, ReplyKeyboardRemove, ChatAction
 from telegram.ext import CallbackContext, MessageHandler, Filters, CommandHandler, ConversationHandler
 from decouple import config
 from sticker_maker.models import BotUser
@@ -173,6 +173,7 @@ def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
 
     sticker_set_unique_name = update.effective_user.id
     update.message.reply_text("در حال ساخت پک استیکر...", reply_markup=ReplyKeyboardRemove())
+    update.effective_chat.send_chat_action(action=ChatAction.CHOOSE_STICKER, timeout=3)
 
     try:
         sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
