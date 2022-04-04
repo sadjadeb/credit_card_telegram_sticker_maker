@@ -7,8 +7,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-updater = Updater(token=config('BOT_TOKEN'))
-
 CHOOSING, TYPING_REPLY, TYPING_CHOICE = range(3)
 
 reply_keyboard = [
@@ -252,10 +250,3 @@ handler_objects = [
     MessageHandler(Filters.sticker, sent_sticker),
     MessageHandler(Filters.command, unknown),
 ]
-
-
-def run_bot():
-    for handler in handler_objects:
-        updater.dispatcher.add_handler(handler)
-    updater.start_polling()
-    updater.idle()
