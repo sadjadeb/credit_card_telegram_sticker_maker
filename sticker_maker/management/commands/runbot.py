@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.management import BaseCommand
 from telegram.ext import Updater
 from decouple import config
@@ -13,7 +14,9 @@ class Command(BaseCommand):
         for handler in handler_objects:
             updater.dispatcher.add_handler(handler)
 
+        updater.dispatcher.add_error_handler(lambda update, context: print(context.error))
+
         updater.start_polling()
-        print(self.style.SUCCESS('Bot started'))
+        print(self.style.SUCCESS('[Bot started]'))
         updater.idle()
-        print(self.style.NOTICE('Bot stopped'))
+        print(self.style.NOTICE('[Bot stopped]'))
