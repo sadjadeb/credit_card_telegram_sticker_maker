@@ -179,43 +179,56 @@ def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
     except error.TelegramError:
         sticker_set = None
 
+    start_index = 0
     if sticker_set is not None:
         # delete stickers in pack and create new one
         for sticker in sticker_set.stickers:
             context.bot.delete_sticker_from_set(sticker=sticker.file_id)
-        start_index = 0
     else:
         # create sticker set and add sticker to it from png file
-        image = cc_renderer(name, cards[0])
-        context.bot.create_new_sticker_set(user_id=update.effective_chat.id,
-                                           name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
-                                           title='credit card sticker set',
-                                           png_sticker=image.getvalue(),
-                                           emojis='💳')
-        image.close()
         start_index = 1
+        try:
+            image = cc_renderer(name, cards[0])
+            context.bot.create_new_sticker_set(user_id=update.effective_chat.id,
+                                               name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
+                                               title='credit card sticker set',
+                                               png_sticker=image.getvalue(),
+                                               emojis='💳')
+            image.close()
+        except ValueError:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text="شماره کارتی که وارد کردی اشتباهه. اگر مطمئنی که این شماره کارت متعلق به بانکی هست به ادمین پیام بده تا اضافه اش کنه!")
+            context.bot.send_message(chat_id=config('CHANNEL_ID'), text=f"not valid card number: {cards[0]}")
+            context.user_data['cards'] = []
+            return CHOOSING
 
     for card in cards[start_index:]:
-        image = cc_renderer(name, card)
+        try:
+            image = cc_renderer(name, card)
+            context.bot.add_sticker_to_set(user_id=update.effective_chat.id,
+                                           name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
+                                           png_sticker=image.getvalue(),
+                                           emojis='💳')
+            image.close()
+        except ValueError:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text="شماره کارتی که وارد کردی اشتباهه. اگر مطمئنی که این شماره کارت متعلق به بانکی هست به ادمین پیام بده تا اضافه اش کنه!")
+            context.bot.send_message(chat_id=config('CHANNEL_ID'), text=f"not valid card number: {card}")
+
+    sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
+
+    if len(sticker_set.stickers) > 0:
+        # add ad sticker to set
         context.bot.add_sticker_to_set(user_id=update.effective_chat.id,
                                        name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
-                                       png_sticker=image.getvalue(),
+                                       png_sticker=config('AD_STICKER_FILE_ID'),
                                        emojis='💳')
-        image.close()
-
-    # add ad sticker to set
-    context.bot.add_sticker_to_set(user_id=update.effective_chat.id,
-                                   name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot',
-                                   png_sticker=config('AD_STICKER_FILE_ID'),
-                                   emojis='💳')
-
-    # send created sticker set to user
-    sticker_set = context.bot.getStickerSet(name=f'cc_{sticker_set_unique_name}_by_credit_card_sticker_bot')
-    context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=sticker_set.stickers[0])
-
-    # log sticker set creation
-    logger.info(f'{first_name} {last_name} with username {username} and id {telegram_id} created sticker set')
-    context.bot.send_sticker(chat_id=config('CHANNEL_ID'), sticker=sticker_set.stickers[0], disable_notification=True)
+        # send created sticker set to user
+        context.bot.send_sticker(chat_id=update.effective_chat.id, sticker=sticker_set.stickers[0])
+        # log sticker set creation
+        logger.info(f'{first_name} {last_name} with username {username} and id {telegram_id} created sticker set')
+        context.bot.send_sticker(chat_id=config('CHANNEL_ID'), sticker=sticker_set.stickers[0],
+                                 disable_notification=True)
 
     context.user_data.clear()
     return ConversationHandler.END
