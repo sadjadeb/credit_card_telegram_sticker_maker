@@ -3,8 +3,9 @@ import arabic_reshaper
 from bidi.algorithm import get_display
 from io import BytesIO
 from platform import system
-from banks_data import banks
-
+from .banks_data import banks
+from django.conf import settings
+import os
 
 def hyphenate_card_number(card_number: str):
     """
@@ -42,9 +43,11 @@ def cc_renderer(name: str, card_number: str):
     else:
         font_size = 18
 
+    statics_path = os.path.join(settings.BASE_DIR, 'sticker_maker', 'statics')
+
     # load the font
-    text_font = ImageFont.truetype('statics/fonts/BTitrBd.ttf', font_size)
-    number_font = ImageFont.truetype('statics/fonts/BTitrBd.ttf', 30)
+    text_font = ImageFont.truetype(os.path.join(statics_path, 'fonts', 'BTitrBd.ttf'), font_size)
+    number_font = ImageFont.truetype(os.path.join(statics_path, 'fonts', 'BTitrBd.ttf'), 30)
 
     # create 430x512 image as base
     base_width, base_height = 430, 512
@@ -63,7 +66,7 @@ def cc_renderer(name: str, card_number: str):
     draw = ImageDraw.Draw(base_image)
 
     # draw logo on image
-    logo = Image.open(f'statics/logos/{bank["bank_name"]}.png')
+    logo = Image.open(os.path.join(statics_path, 'logos', f'{bank["bank_name"]}.png'))
     base_image.paste(logo, (65, 5))
 
     # draw background
