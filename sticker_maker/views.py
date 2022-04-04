@@ -1,10 +1,13 @@
 from typing import Dict
 from telegram import Update, error, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import Updater, CallbackContext, MessageHandler, Filters, CommandHandler, ConversationHandler
+from telegram.ext import CallbackContext, MessageHandler, Filters, CommandHandler, ConversationHandler
 from decouple import config
+from sticker_maker.models import BotUser
 from sticker_maker.renderer import cc_renderer
 import logging
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    handlers=[logging.FileHandler("log.txt"), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
 CHOOSING, TYPING_REPLY, TYPING_CHOICE = range(3)
@@ -18,23 +21,43 @@ markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 __to_english_nums__ = str.maketrans('۰۱۲۳۴۵۶۷۸۹', '0123456789')
 
 
+def get_user_from_update(update: Update, context: CallbackContext) -> BotUser:
+    first_name = update.message.chat.first_name if update.message.chat.first_name is not None else ''
+    last_name = update.message.chat.last_name if update.message.chat.last_name is not None else ''
+    username = update.message.chat.username
+
+    user, created = BotUser.objects.update_or_create(
+        user_id=update.effective_user.id,
+        defaults={'first_name': update.effective_user.first_name,
+                  'last_name': update.effective_user.last_name,
+                  'username': update.effective_user.username,
+                  }
+    )
+    if created:
+        # log starts in channel
+        context.bot.send_message(chat_id=config('CHANNEL_ID'),
+                                 text=f'{first_name} {last_name} with username @{username} started bot.',
+                                 disable_notification=True)
+        # log starts in logger
+        logger.info(f'{first_name} {last_name} with username {username} started bot')
+    return user
+
+
+def update_user_data(view):
+    def wrapper(update: Update, context: CallbackContext):
+        get_user_from_update(update, context)
+        return view(update, context)
+
+    return wrapper
+
+
+@update_user_data
 def start(update: Update, context: CallbackContext):
     Welcome_message = f"""سلام {update.message.chat.first_name}
 خیلی خوش اومدی!
 برای ساخت استیکر شماره کارتت دستور /create رو بزن😁
 """
-
-    first_name = update.message.chat.first_name if update.message.chat.first_name is not None else ''
-    last_name = update.message.chat.last_name if update.message.chat.last_name is not None else ''
-    username = update.message.chat.username
     context.bot.send_message(chat_id=update.effective_chat.id, text=Welcome_message)
-
-    # log starts in channel
-    context.bot.send_message(chat_id=config('CHANNEL_ID'),
-                             text=f'{first_name} {last_name} with username @{username} started bot.',
-                             disable_notification=True)
-    # log starts in logger
-    logger.info(f'{first_name} {last_name} with username {username} started bot')
 
 
 def prettify_data(user_data: Dict[str, str]) -> str:
@@ -54,6 +77,7 @@ def prettify_data(user_data: Dict[str, str]) -> str:
     return text
 
 
+@update_user_data
 def create(update: Update, context: CallbackContext) -> int:
     """
     Start the conversation and ask user for input.
@@ -197,6 +221,7 @@ def create_cc_sticker_set(update: Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 
+@update_user_data
 def about(update: Update, context: CallbackContext):
     about_message = f"""
 خوشحال میشم اگر در راستای بهتر شدنم پیشنهادات رو به @SadjadEb بگی.
@@ -210,11 +235,13 @@ def raw_text(update: Update, context: CallbackContext):
                              text="اول باید انتخاب کنی چه اطلاعاتی رو قراره به من بدی🙄")
 
 
+@update_user_data
 def sent_sticker(update: Update, context: CallbackContext):
     print(update.message.sticker.file_id)
     context.bot.send_message(chat_id=update.effective_chat.id, text="من خودم ذغال فروشم به من ذغال نده😁")
 
 
+@update_user_data
 def unknown(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=update.effective_chat.id, text="ببخشید من این دستوری که زدی رو نمیفهمم🥲")
 
